@@ -1,0 +1,72 @@
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1f2a22;
+    color: #dfe8df;
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+
+.wrap {
+    width: 100%;
+    max-width: 960px;
+    padding: 16px;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+    touch-action: none;
+}
+
+.help {
+    margin: 14px 0 0;
+    text-align: center;
+    font-size: .9rem;
+    color: #a9b8a9;
+}
+
+kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 1px 6px;
+    margin: 0 2px;
+    border-radius: 4px;
+    background: #34443a;
+    border-bottom: 2px solid #253028;
+    font-family: inherit;
+    font-size: .85em;
+    text-align: center;
+}
+
+/* 터치 기기에서만 보이는 버튼 */
+.touch { display: none; }
+
+@media (pointer: coarse) {
+    .touch {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 14px;
+        user-select: none;
+    }
+    .touch .pad { display: flex; gap: 12px; }
+    .touch button {
+        width: 72px;
+        height: 72px;
+        border: 0;
+        border-radius: 50%;
+        background: #3d5244;
+        color: #fff;
+        font-size: 1.4rem;
+        touch-action: none;
+    }
+    .touch .jump { width: 96px; height: 96px; background: #c4632a; font-size: 1.1rem; }
+    .help { display: none; }
+}

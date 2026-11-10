@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>여우의 고난길</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="wrap">
+    <canvas id="game" width="960" height="560" aria-label="여우의 고난길 게임 화면"></canvas>
+
+    <div class="touch" aria-hidden="true">
+        <div class="pad">
+            <button type="button" data-key="ArrowLeft">◀</button>
+            <button type="button" data-key="ArrowRight">▶</button>
+        </div>
+        <div class="pad">
+            <button type="button" data-key="KeyR">↺</button>
+            <button type="button" data-key="KeyZ">공격</button>
+            <button type="button" class="jump" data-key="Space">점프</button>
+        </div>
+    </div>
+
+    <p class="help">
+        <kbd>←</kbd><kbd>→</kbd> 이동 · <kbd>Space</kbd> 점프 (공중에서 한 번 더) · <kbd>Z</kbd> 공격 ·
+        <kbd>R</kbd> 저장 지점에서 다시 · <kbd>P</kbd> 일시정지 · 타이틀에서 <kbd>←</kbd><kbd>→</kbd> 난이도 선택
+    </p>
+</main>
+
+<script src="js/levels.js"></script>
+<script src="js/bosses.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
