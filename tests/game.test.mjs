@@ -1,4 +1,4 @@
-// 실행: node --test tests/
+// 실행: npm test  (또는 node --test)
 // 브라우저 없이 게임 로직을 1/60초씩 직접 돌려서 확인한다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
