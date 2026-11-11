@@ -8,6 +8,15 @@
 </head>
 <body>
 <main class="wrap">
+    <div id="account" class="account" hidden>
+        <span id="account-who"></span>
+        <span class="actions">
+            <button type="button" id="btn-rank">🏆 랭킹</button>
+            <button type="button" id="btn-login">로그인 / 회원가입</button>
+            <button type="button" id="btn-logout" hidden>로그아웃</button>
+        </span>
+    </div>
+
     <canvas id="game" width="960" height="560" aria-label="여우의 고난길 게임 화면"></canvas>
 
     <div class="touch" aria-hidden="true">
@@ -24,10 +33,43 @@
 
     <p class="help">
         <kbd>←</kbd><kbd>→</kbd> 이동 · <kbd>Space</kbd> 점프 (공중에서 한 번 더) · <kbd>Z</kbd> 공격 ·
-        <kbd>R</kbd> 저장 지점에서 다시 · <kbd>P</kbd> 일시정지 · 타이틀에서 <kbd>←</kbd><kbd>→</kbd> 난이도 선택
+        <kbd>R</kbd> 저장 지점에서 다시 · <kbd>P</kbd> 일시정지 · <kbd>L</kbd> 랭킹 · 타이틀에서 <kbd>←</kbd><kbd>→</kbd> 난이도 선택
     </p>
 </main>
 
+<div id="auth-modal" class="modal" hidden>
+    <div class="box" role="dialog" aria-modal="true" aria-label="로그인">
+        <button type="button" class="close" aria-label="닫기">✕</button>
+        <div class="tabs">
+            <button type="button" class="tab on" data-mode="login">로그인</button>
+            <button type="button" class="tab" data-mode="signup">회원가입</button>
+        </div>
+        <form id="auth-form">
+            <label>아이디 <input name="username" required autocomplete="username" maxlength="16" placeholder="영어 소문자·숫자·_ 3~16자"></label>
+            <label class="only-signup" hidden>닉네임 (랭킹에 보여요) <input name="nickname" maxlength="12" placeholder="2~12자"></label>
+            <label>비밀번호 <input name="password" type="password" required minlength="6" autocomplete="current-password" placeholder="6자 이상"></label>
+            <p id="auth-msg" class="msg" aria-live="polite"></p>
+            <button type="submit" class="primary">로그인</button>
+        </form>
+    </div>
+</div>
+
+<div id="rank-modal" class="modal" hidden>
+    <div class="box wide" role="dialog" aria-modal="true" aria-label="랭킹">
+        <button type="button" class="close" aria-label="닫기">✕</button>
+        <h2>🏆 랭킹</h2>
+        <p class="sub">10스테이지를 처음부터 끝까지 깬 기록 · 시간이 짧을수록, 같으면 덜 죽을수록 위</p>
+        <div class="tabs">
+            <button type="button" class="tab" data-diff="easy">쉬움</button>
+            <button type="button" class="tab on" data-diff="hard">어려움</button>
+        </div>
+        <div id="rank-body" class="rank-body"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/online.js"></script>
 <script src="js/levels.js"></script>
 <script src="js/bosses.js"></script>
 <script src="js/game.js"></script>

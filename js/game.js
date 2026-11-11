@@ -35,11 +35,11 @@
     //   hard    보스마다 추가 패턴을 쓰는지 (높이 섞기, 연속 공격, 되돌아오기 등)
     const DIFF = {
         easy: {
-            name: '쉬움', hearts: 3, bossHp: BOSS_HP / 2, warn: true, bestKey: 'foxHardBestEasy10', reachKey: 'foxHardReachEasy',
+            name: '쉬움', hearts: 3, bossHp: BOSS_HP / 2, warn: true, fakeHint: true, bestKey: 'foxHardBestEasy10', reachKey: 'foxHardReachEasy',
             boss: { speed: 0.85, enrage: false, rest: 1.2, hard: false },
         },
         hard: {
-            name: '어려움', hearts: 1, bossHp: BOSS_HP, warn: false, bestKey: 'foxHardBest10', reachKey: 'foxHardReach',
+            name: '어려움', hearts: 1, bossHp: BOSS_HP, warn: false, fakeHint: false, bestKey: 'foxHardBest10', reachKey: 'foxHardReach',
             boss: { speed: 1, enrage: true, rest: 0.75, hard: true },
         },
     };
@@ -77,11 +77,22 @@
         if (JUMP_KEYS.includes(code) && !jumpHeld()) jumpReleased = true;
     }
 
+    // 로그인·랭킹 창에서 글자를 칠 때는 게임 키로 받지 않는다
+    const modalOpen = () => !!document.querySelector('.modal:not([hidden])');
     window.addEventListener('keydown', e => {
-        if (GAME_KEYS.has(e.code)) e.preventDefault();
+        if (modalOpen()) return;
+        // 계정 줄 버튼에 포커스가 남아 있어도 Space / Enter 가 버튼을 누르지 않게
+        if (e.target instanceof HTMLButtonElement && (GAME_KEYS.has(e.code) || e.code === 'Enter')) e.target.blur();
+        if (GAME_KEYS.has(e.code) || e.code === 'Enter') e.preventDefault();
         pressKey(e.code, e.repeat);
     });
     window.addEventListener('keyup', e => releaseKey(e.code));
+    // 플레이 중에 로그인·랭킹 창을 열면 일시정지
+    document.addEventListener('focusin', e => {
+        if (!e.target.closest || !e.target.closest('.modal')) return;
+        keys.clear();
+        if (game.state === 'playing') game.state = 'paused';
+    });
     window.addEventListener('blur', () => keys.clear());
 
     document.querySelectorAll('[data-key]').forEach(btn => {
@@ -104,6 +115,7 @@
         difficulty: loadDifficulty(),   // easy | hard
         best: null,
         newRecord: false,
+        online: null,       // 클리어 화면에 보여 줄 랭킹 등록 상태 문구
     };
     game.best = loadBest();
 
@@ -229,8 +241,40 @@
         game.continued = from > 0;
         game.checkpoint = null;
         game.newRecord = false;
+        game.online = null;
+        pendingRun = null;
         buildStage();
         game.state = 'playing';
+    }
+
+    // ---------------------------------------------------------------- 온라인 랭킹 (js/online.js)
+    const online = () => (window.FoxOnline && window.FoxOnline.enabled ? window.FoxOnline : null);
+    let pendingRun = null;   // 로그인 안 하고 깬 기록: 클리어 화면에서 로그인하면 그때 올린다
+
+    function submitOnline() {
+        const on = online();
+        if (!on || game.continued) return;
+        const run = { difficulty: game.difficulty, time: game.time, deaths: game.deaths };
+        if (!on.profile) {
+            pendingRun = run;
+            game.online = '지금 로그인하면 이 기록이 랭킹에 올라가요';
+            return;
+        }
+        pendingRun = null;
+        game.online = '랭킹에 기록을 올리는 중…';
+        on.submitScore(run)
+            .then(({ rank }) => {
+                game.online = rank
+                    ? `${diff().name} 랭킹 ${rank}위! (내 최고 기록 기준 · L 로 랭킹 보기)`
+                    : '랭킹에 기록했어요 (50위 밖) · L 로 랭킹 보기';
+            })
+            .catch(err => { game.online = `랭킹 등록 실패: ${err.message}`; });
+    }
+
+    if (online()) {
+        online().onChange(profile => {
+            if (profile && pendingRun && game.state === 'win') submitOnline();
+        });
     }
 
     function nextStage() {
@@ -253,12 +297,14 @@
                 else if (code === 'ArrowRight' || code === 'KeyD' || code === 'Digit2') setDifficulty('hard');
                 else if (code === 'Enter' || code === 'Space') startGame();
                 else if (code === 'KeyC' && loadReach() > 0) startGame(loadReach());
+                else if (code === 'KeyL' && online()) online().openRanking(game.difficulty);
                 break;
             case 'clear':
                 if (code === 'Enter' || code === 'Space') nextStage();
                 break;
             case 'win':
                 if (code === 'Enter' || code === 'Space') game.state = 'title';   // 타이틀에서 난이도를 다시 고른다
+                else if (code === 'KeyL' && online()) online().openRanking(game.difficulty);
                 break;
             case 'playing':
                 if (code === 'KeyR') respawn();
@@ -883,6 +929,7 @@
             } else {
                 saveBest();
                 game.state = 'win';
+                submitOnline();
             }
         }
     }
@@ -1065,7 +1112,8 @@
             for (let c = cStart; c <= cEnd; c++) {
                 const t = stage.tiles[r][c];
                 const x = c * TILE, y = r * TILE;
-                if (t === '#' || t === 'F') drawDirt(c, r, x, y);
+                if (t === '#') drawDirt(c, r, x, y);
+                else if (t === 'F') drawFake(c, r, x, y);
                 else if (t === '-') drawPlank(x, y);
                 else if (t === 'X') drawCrumble(c, r, x, y);
                 else if (t === 'I' && stage.revealed.has(`${c},${r}`)) drawRevealed(x, y);
@@ -1308,6 +1356,29 @@
             ctx.fillStyle = grass[1];
             ctx.fillRect(x, y + 9, TILE, 3);
         }
+    }
+
+    /** 가짜 블록: 어려움에서는 흙과 똑같고, 쉬움에서는 반투명 + 점선 테두리로 티가 난다 */
+    function drawFake(c, r, x, y) {
+        if (!diff().fakeHint) { drawDirt(c, r, x, y); return; }
+        ctx.save();
+        ctx.globalAlpha = 0.4 + 0.08 * Math.sin(performance.now() / 300);   // 살짝 일렁인다
+        drawDirt(c, r, x, y);
+        ctx.restore();
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        // 이웃한 가짜 블록 쪽 변은 그리지 않아 덩어리 하나로 보이게 한다
+        const L = x + 1, T = y + 1, R = x + TILE - 1, B = y + TILE - 1;
+        const edges = [[0, -1, L, T, R, T], [0, 1, L, B, R, B], [-1, 0, L, T, L, B], [1, 0, R, T, R, B]];
+        ctx.beginPath();
+        for (const [dc, dr, x0, y0, x1, y1] of edges) {
+            if (tileAt(c + dc, r + dr) === 'F') continue;
+            ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+        }
+        ctx.stroke();
+        ctx.restore();
     }
 
     function drawPlank(x, y) {
@@ -1965,11 +2036,12 @@
                 ['', 10],
                 [`난이도   ${pick('easy')}      ${pick('hard')}`, 26],
                 [game.difficulty === 'easy'
-                    ? '하트 3개 · 함정 앞 "!" 경고 · 보스 체력 절반'
+                    ? '하트 3개 · 함정 앞 "!" 경고 · 가짜 바닥 표시 · 보스 체력 절반'
                     : '한 번 닿으면 바로 기절', 17],
                 ['← → 로 난이도 선택,  Enter 를 눌러 시작', 20],
                 [loadReach() > 0 ? `C 를 누르면 ${loadReach() + 1}스테이지부터 이어하기 (기록은 남지 않아요)` : `스테이지 ${STAGES.length}개`, 16],
                 [best, 17],
+                ...(online() ? [['L 을 누르면 온라인 랭킹', 15]] : []),
             ],
             paused: [['일시정지', 44], ['P 또는 Enter 로 계속', 20]],
             clear: [
@@ -1984,6 +2056,7 @@
                 ['드디어 집에 도착!', 50],
                 [`${diff().name} · ${game.deaths}번 죽고 ${fmtTime(game.time)} 만에 클리어`, 24],
                 [game.continued ? '이어하기로 클리어해서 기록은 남지 않아요' : game.newRecord ? '신기록!' : best, 20],
+                ...(game.online ? [[game.online, 18]] : []),
                 ['Enter 를 눌러 타이틀로', 20],
             ],
         }[game.state];
