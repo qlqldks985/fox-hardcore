@@ -1,0 +1,11 @@
+{
+  "name": "fox-hardcore",
+  "private": true,
+  "description": "여우의 고난길 - 고난도 횡스크롤 플랫포머",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

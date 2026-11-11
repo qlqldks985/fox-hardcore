@@ -32,6 +32,7 @@ HTML5 Canvas와 순수 JavaScript로 만들었으며, 별도의 설치나 빌드
 | `P` / `Esc` | 일시정지 |
 | `Enter` | 시작 · 계속 |
 | `L` | 온라인 랭킹 보기 (타이틀 · 클리어 화면) |
+| `M` | 효과음 끄기 / 켜기 |
 
 **타이틀 화면**
 - `←` `→` : 난이도 선택 (쉬움 / 어려움)
@@ -87,23 +88,49 @@ HTML5 Canvas와 순수 JavaScript로 만들었으며, 별도의 설치나 빌드
 
 ```
 fox-hardcore/
-├── index.html      # 게임 화면(캔버스), 터치 버튼, 로그인 · 랭킹 창
-├── css/
-│   └── style.css   # 화면 스타일
-├── supabase/
-│   └── schema.sql  # 회원 · 기록 테이블, 랭킹 뷰, 권한(RLS)
-└── js/
-    ├── config.js   # Supabase 주소와 공개 키
-    ├── online.js   # 로그인 · 회원가입 · 랭킹 (window.FoxOnline)
-    ├── levels.js   # 스테이지 지형 · 함정 · 저장 지점 정의 (STAGES 배열)
-    ├── bosses.js   # 보스 10종 정의 (BOSS_TYPES, 상태 기계)
-    └── game.js     # 게임 루프, 물리, 입력, 렌더링
+├── index.html            # 게임 화면(캔버스), 터치 버튼, 로그인 · 랭킹 창
+├── css/style.css         # 화면 스타일
+├── js/
+│   ├── levels.js         # 스테이지 지형 · 함정 · 저장 지점 정의 (STAGES)
+│   ├── bosses.js         # 보스 10종 정의 (BOSS_TYPES, 상태 기계)
+│   ├── core.js           # 설정값, 입력, 게임 상태, 기록 저장, 타일 충돌
+│   ├── world.js          # 한 프레임 업데이트: 플레이어 물리, 함정, 총알, 적, 충돌
+│   ├── boss-fight.js     # 보스 정의를 실제로 돌리는 부분
+│   ├── render-world.js   # 그리기: 배경, 타일, 스테이지 기믹
+│   ├── render-actors.js  # 그리기: 여우, 적, 보스, 투사체, 상단 표시줄, 메뉴
+│   ├── main.js           # 메인 루프 (1/60초 고정 간격 업데이트 → 그리기)
+│   ├── sound.js          # 효과음 (Web Audio로 즉석 합성, 소리 파일 없음)
+│   ├── online.js         # 로그인 · 회원가입 · 랭킹 (window.FoxOnline)
+│   └── config.js         # Supabase 주소와 공개 키
+├── supabase/schema.sql   # 회원 · 기록 테이블, 랭킹 뷰, 권한(RLS)
+├── tests/                # 브라우저 없이 게임을 돌리는 자동 테스트
+└── docs/images/          # README 이미지
 ```
+
+빌드 도구 없이 `<script>` 태그 순서대로 불러오며, 게임 스크립트들은 전역 스코프를 공유합니다.
+
+## 테스트
+
+```bash
+npm test        # 또는 node --test
+```
+
+Node.js 20 이상만 있으면 됩니다 (설치할 패키지 없음). 캔버스와 문서를 가짜로 바꾼 환경에서 게임 로직을 1/60초씩 직접 돌려 확인합니다. 10분 분량의 보스전도 1초 안팎이면 끝납니다.
+
+- 10개 스테이지가 두 난이도에서 에러 없이 돌아가고 그려지는지
+- **보스 10종 × 2난이도**: 무적 봇이 여우불을 쏘며 싸워서 보스를 쓰러뜨리고, 출구 · 집으로 넘어가는지 (어려움 전용 패턴, 가짜 죽음 같은 억까 포함)
+- 가짜 바닥은 밟을 수 없는지, 쉬움에서만 표시되는지
+- 난이도별 피격 규칙 (어려움 한 번에 기절, 쉬움 하트 3개)
+- 최고 기록 기준이 온라인 랭킹과 같은지 (시간 → 죽은 횟수, 이어하기 제외)
+
+GitHub에 올릴 때마다 GitHub Actions에서 자동으로 실행됩니다.
 
 ## 기술 스택
 
 - HTML5 Canvas
 - Vanilla JavaScript (외부 라이브러리 없음)
 - CSS3
+- Web Audio API — 효과음
 - Supabase (Auth, PostgreSQL, Row Level Security) — 로그인 · 랭킹
+- Node.js 내장 테스트 러너 (`node:test`, `node:vm`) — 자동 테스트
 - GitHub Pages — 배포
