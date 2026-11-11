@@ -64,7 +64,10 @@
     const jumpHeld = () => JUMP_KEYS.some(k => keys.has(k));
     const shootHeld = () => SHOOT_KEYS.some(k => keys.has(k));
 
+    const sfx = name => window.Sfx && window.Sfx.play(name);
+
     function pressKey(code, repeat = false) {
+        if (!repeat && code === 'KeyM' && window.Sfx) window.Sfx.toggleMute();
         if (!repeat) {
             if (JUMP_KEYS.includes(code)) jumpQueued = true;
             handleMenuKey(code);
@@ -134,6 +137,7 @@
     function setDifficulty(d) {
         if (game.difficulty === d) return;
         game.difficulty = d;
+        sfx('select');
         game.best = loadBest();
         try { localStorage.setItem('foxHardDifficulty', d); } catch { /* 저장 불가 환경 */ }
     }
@@ -155,7 +159,8 @@
     function saveBest() {
         if (game.continued) return;   // 이어하기로 깬 판은 기록에 넣지 않는다
         const b = game.best;
-        game.newRecord = !b || game.deaths < b.deaths || (game.deaths === b.deaths && game.time < b.time);
+        // 온라인 랭킹과 같은 기준: 시간이 짧을수록, 같으면 덜 죽을수록 좋은 기록
+        game.newRecord = !b || game.time < b.time || (game.time === b.time && game.deaths < b.deaths);
         if (!game.newRecord) return;
         game.best = { deaths: game.deaths, time: game.time };
         try { localStorage.setItem(diff().bestKey, JSON.stringify(game.best)); } catch { /* 저장 불가 환경 */ }
@@ -242,6 +247,7 @@
         game.checkpoint = null;
         game.newRecord = false;
         game.online = null;
+        sfx('start');
         pendingRun = null;
         buildStage();
         game.state = 'playing';
@@ -483,18 +489,20 @@
         if (p.onGround) p.airJumps = 1;
 
         const jumpMul = p.inWeb ? 0.55 : 1;
-        const groundJump = () => { p.vy = -PHYS.jump * jumpMul; p.coyote = 0; p.buffer = 0; p.onGround = false; };
+        const groundJump = () => { p.vy = -PHYS.jump * jumpMul; p.coyote = 0; p.buffer = 0; p.onGround = false; sfx('jump'); };
         if (jumpQueued && p.grabbed) {
             // 붙잡혔을 때 점프하면 빠져나온다
             p.grabbed = 0;
             p.vy = -480;
             p.invuln = Math.max(p.invuln, 0.3);
+            sfx('jump');
             burst(p.x + p.w / 2, p.y + p.h / 2, 10, ['#ff8ab0', '#ffffff'], 160);
         } else if (jumpQueued) {
             if (p.coyote > 0) groundJump();
             else if (p.airJumps > 0) {
                 p.vy = -PHYS.doubleJump * jumpMul;
                 p.airJumps--;
+                sfx('doubleJump');
                 burst(p.x + p.w / 2, p.y + p.h, 6, ['#ffffff', '#dfe8ff'], 120);
             } else p.buffer = PHYS.jumpBuffer;
         } else if (p.buffer > 0) {
@@ -551,6 +559,7 @@
             if (shroom) {
                 // 버섯 트램펄린: 높이 튕겨 오른다
                 p.vy = -1080;
+                sfx('bounce');
                 p.onGround = false;
                 p.coyote = 0;
                 p.airJumps = 1;
@@ -563,6 +572,7 @@
         if (shootHeld() && p.shootCd <= 0 && bullets.length < PHYS.maxBullets) {
             bullets.push({ x: p.x + p.w / 2 + p.facing * 12, y: p.y + p.h * 0.5, vx: p.facing * PHYS.bulletSpeed, life: 0.9 });
             p.shootCd = PHYS.bulletCooldown;
+            sfx('shoot');
         }
 
         p.anim += Math.abs(p.vx) * dt * 0.07;
@@ -629,6 +639,7 @@
             t.fired = true;
             t.cells.forEach(({ c, r }) => { stage.tiles[r][c] = t.tile; });
             if (t.tile === '#') shake(0.2);
+            sfx('trap');
         }
         for (const [key, left] of stage.crumbling) {
             const remain = left - dt;
@@ -636,6 +647,7 @@
             const [c, r] = key.split(',').map(Number);
             stage.tiles[r][c] = '.';
             stage.crumbling.delete(key);
+            sfx('crumble');
             burst(c * TILE + TILE / 2, r * TILE + TILE / 2, 8, ['#8d7b68', '#6e5e4e'], 160);
         }
     }
@@ -652,6 +664,7 @@
                     h.wait -= dt;
                     if (h.wait <= 0) {
                         h.active = true;
+                        if (h.trigger) sfx('trap');
                         Object.assign(h, h.launch);
                     }
                 }
@@ -698,6 +711,7 @@
                     e.alive = false;
                     e.squash = 0.6;
                     b.dead = true;
+                    sfx('enemyHit');
                     burst(e.x + e.w / 2, e.y + e.h / 2, 10, ['#5b3b8c', '#2e1f47'], 200);
                 }
             }
@@ -828,6 +842,7 @@
         if (!b.active) {
             if (player.x > b.wake * TILE) {
                 b.active = true; b.state = 'rest'; b.t = 1.2;
+                sfx('bossWake');
                 // 보스가 깨어나면 뒤의 문은 무조건 닫힌다 (보스가 방 밖으로 나가지 않게)
                 for (const t of stage.traps) {
                     if (t.tile === '#' && !t.fired) { t.fired = true; t.cells.forEach(({ c, r }) => { stage.tiles[r][c] = '#'; }); }
@@ -872,6 +887,7 @@
     function damageBoss() {
         boss.hp--;
         boss.flash = 0.08;
+        sfx('bossHit');
         if (boss.hp > 0) return;
         // 어려움 억까: 가짜 죽음, 마지막 발악 등 (보스가 true 를 돌려주면 아직 안 죽는다)
         const type = BOSS_TYPES[boss.type];
@@ -882,6 +898,7 @@
     function killBoss() {
         boss.alive = false;
         boss.ghost = 0;
+        sfx('bossDie');
         player.grabbed = 0;
         shake(0.6);
         burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 60, ['#5b3b8c', '#ffd34d', '#ffffff', '#2e1f47'], 420);
@@ -898,6 +915,7 @@
     function activateSave(s) {
         if (game.checkpoint?.saveIndex === s.index) return;
         game.checkpoint = { x: s.x + 6, y: s.y + s.h - player.h, saveIndex: s.index };
+        sfx('save');
         popups.push({ x: s.x + s.w / 2, y: s.y - 8, text: '저장!', t: 1 });
     }
 
@@ -916,6 +934,7 @@
                 e.squash = 0.6;
                 p.vy = -PHYS.stompBounce;
                 p.airJumps = 1;
+                sfx('stomp');
             } else if (p.invuln <= 0) hurtPlayer();
         }
         if (game.state !== 'playing') return;
@@ -926,9 +945,11 @@
         if (g && g.visible && overlap(p, { x: g.x + 20, y: g.y + 20, w: g.w - 40, h: g.h - 20 })) {
             if (game.stageIndex < STAGES.length - 1) {
                 game.state = 'clear';
+                sfx('clear');
             } else {
                 saveBest();
                 game.state = 'win';
+                sfx('win');
                 submitOnline();
             }
         }
@@ -960,6 +981,7 @@
             if (h.grab && !(h.warn > 0) && overlap(p, centerBox(h))) {
                 p.grabbed = Math.sign(boss.x + boss.w / 2 - (p.x + p.w / 2)) || 1;
                 popups.push({ x: p.x + p.w / 2, y: p.y - 14, text: '붙잡혔다! 점프로 탈출', t: 1, fill: '#ff8ab0', stroke: '#3a0612' });
+                sfx('grab');
                 return;
             }
         }
@@ -973,6 +995,7 @@
         if (p.hp <= 1) return killPlayer();
         p.hp--;
         p.invuln = HURT_INVULN;
+        sfx('hurt');
         if (fell) {
             // 떨어지면 마지막으로 밟은 안전한 땅으로 돌아온다
             p.x = p.safe.x;
@@ -992,6 +1015,7 @@
         if (game.state !== 'playing') return;
         game.deaths++;
         game.state = 'dead';
+        sfx('die');
         player.hp = 0;   // 기절하면 하트가 모두 빈 칸으로 보이게
         shake(0.25);
         burst(player.x + player.w / 2, player.y + player.h / 2, 36, ['#e8742a', '#fde7cf', '#ffffff', '#b8401f'], 380);
@@ -1333,6 +1357,8 @@
         ctx.fillRect(camX - 20, -20, VIEW_W + 40, VIEW_H + 40);
         // 어둠 속에서도 보이는 것: 보스의 빛나는 눈, 출구
         if (boss && boss.alive) BOSS_TYPES[boss.type].drawGlow?.(boss, ctx, bossArt(boss));
+        // 여우불은 스스로 빛나서 어둠 속에서도 보인다 (주변을 밝히지는 않음)
+        bullets.forEach(drawBullet);
         if (stage.goal?.visible) {
             ctx.globalAlpha = 0.6;
             drawGoal(stage.goal);
@@ -1790,11 +1816,31 @@
         ctx.restore();
     }
 
+    /** 여우불: 꼬리가 뒤로 흩날리는 푸른 불꽃 */
     function drawBullet(b) {
-        ctx.fillStyle = '#fff3a0';
+        const dir = Math.sign(b.vx) || 1;
+        const flick = Math.sin((b.life + b.x) * 40) * 1.5;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        // 바깥 빛
+        ctx.fillStyle = 'rgba(80, 170, 255, 0.25)';
         ctx.beginPath();
-        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.arc(b.x, b.y, 9, 0, Math.PI * 2);
         ctx.fill();
+        // 불꽃 몸통 + 꼬리
+        ctx.fillStyle = '#4fb4ff';
+        ctx.beginPath();
+        ctx.moveTo(b.x + dir * 6, b.y);
+        ctx.quadraticCurveTo(b.x, b.y - 7, b.x - dir * (14 + flick), b.y - 2 + flick * 0.6);
+        ctx.quadraticCurveTo(b.x - dir * 4, b.y, b.x - dir * (12 - flick), b.y + 3);
+        ctx.quadraticCurveTo(b.x, b.y + 7, b.x + dir * 6, b.y);
+        ctx.fill();
+        // 하얀 심지
+        ctx.fillStyle = '#e8f6ff';
+        ctx.beginPath();
+        ctx.arc(b.x + dir * 1.5, b.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     function drawBeetle(e) {
@@ -2000,6 +2046,7 @@
         ctx.fillText(`죽은 횟수 ${game.deaths}`, 28, 31);
         ctx.fillText(`시간 ${fmtTime(game.time)}`, 200, 31);
         ctx.fillText(diff().name, 330, 31);
+        if (window.Sfx && window.Sfx.muted) ctx.fillText('소리 끔', 500, 31);
         if (diff().hearts > 1) {
             const max = diff().hearts;
             ctx.fillStyle = '#ff6b8a';
@@ -2024,7 +2071,7 @@
     }
 
     function drawOverlay() {
-        const best = game.best ? `최고 기록 (${diff().name}): ${game.best.deaths}번 죽고 ${fmtTime(game.best.time)}` : '';
+        const best = game.best ? `최고 기록 (${diff().name}): ${fmtTime(game.best.time)} · ${game.best.deaths}번 죽음` : '';
         const pick = d => (game.difficulty === d ? `▶ ${DIFF[d].name} ◀` : DIFF[d].name);
         const lines = {
             title: [
@@ -2032,7 +2079,7 @@
                 ['죽어도 괜찮아요. 원래 그런 게임입니다.', 22],
                 ['', 10],
                 ['← → 이동   Space 점프 (공중에서 한 번 더)   Z 공격', 18],
-                ['R 저장 지점에서 다시   P 일시정지', 18],
+                ['R 저장 지점에서 다시   P 일시정지   M 소리 끄기/켜기', 18],
                 ['', 10],
                 [`난이도   ${pick('easy')}      ${pick('hard')}`, 26],
                 [game.difficulty === 'easy'
