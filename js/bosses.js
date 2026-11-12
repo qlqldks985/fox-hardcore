@@ -45,10 +45,11 @@ const BOSS_TYPES = (() => {
             }
         }
     }
-    /** 보스 양옆으로 바닥을 따라 퍼지는 파도 */
-    function groundWaves(b, a, shape, speed, h) {
+    /** 보스 양옆으로 바닥을 따라 퍼지는 파도.
+     *  tall 을 주면 그 높이의 큰 충격파가 된다: 발판 밑을 지날 때만 발판 아래까지 낮아진다 (world.js 의 waveTop) */
+    function groundWaves(b, a, shape, speed, h, tall = 0) {
         for (const d of [-1, 1]) {
-            a.spawn({ shape, x: d > 0 ? b.x + b.w + 15 : b.x - 15, y: GROUND - h / 2, w: 26, h, vx: d * speed * a.fast });
+            a.spawn({ shape, x: d > 0 ? b.x + b.w + 15 : b.x - 15, y: GROUND - h / 2, w: 26, h, vx: d * speed * a.fast, tall });
         }
     }
     const shaking = () => (Math.random() - 0.5) * 6;
@@ -95,7 +96,7 @@ const BOSS_TYPES = (() => {
 
     return {
         // ================================================================ 1. 딱정벌레 대왕
-        // 기본기: 도토리 연사, 충격파, 돌진.
+        // 기본기: 도토리 연사, 충격파(발판 위로 피한다), 돌진.
         // 억까: 돌진 중 멈칫(페이크), 쓰러진 척하다가 출구에 다가가면 벌떡 일어난다.
         beetle: {
             name: '딱정벌레 대왕', w: 110, h: 80, hp: 1,
@@ -120,7 +121,9 @@ const BOSS_TYPES = (() => {
                     case 'jump':
                         if (b.landed) {
                             b.vx = 0; a.shake(0.3);
-                            groundWaves(b, a, 'wave', 420, 24);
+                            a.impact(b.x + b.w / 2, GROUND, b.w);
+                            // 이단 점프로도 못 넘는 높이 (최대 약 220px) → 발판 위로 올라가야만 피할 수 있다
+                            groundWaves(b, a, 'wave', 420, 24, 240);
                             if (--b.n > 0) { b.vy = -760; b.onGround = false; } else a.rest(b);
                         }
                         break;

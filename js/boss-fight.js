@@ -14,7 +14,7 @@ function bossApi(b, dt) {
         toPlayer: Math.sign(player.x + player.w / 2 - (b.x + b.w / 2)) || -1,
         playerOnPlank: player.y + player.h < 8 * TILE + 10,
         rest(bb, mul = 1) { bb.state = 'rest'; bb.t = style.rest * mul / fast; bb.vx = 0; },
-        shake, burst,
+        shake, burst, dust, ring, impact,
         popup(text, x, y, fill = '#ffe14d') { popups.push({ x, y, text, t: 1.6, fill, stroke: '#2a1a00' }); },
         spawn(h) { hazards.push({ vy: 0, ay: 0, ax: 0, spin: 0, active: true, ...h }); },
         /** 보스 앞에서 가로로 쏜다 (lane: low | high | plank) */
@@ -33,7 +33,7 @@ function bossApi(b, dt) {
         },
         /** 가로 빔: warn 동안 예고선만, 그 뒤 life 동안 위험 */
         beam({ x0, x1, y, h, warn, life, kind, ...rest }) {
-            this.spawn({ shape: 'beam', kind, x: (x0 + x1) / 2, y, w: x1 - x0, h, vx: 0, warn, warnMax: warn, life, ...rest });
+            this.spawn({ shape: 'beam', kind, x: (x0 + x1) / 2, y, w: x1 - x0, h, vx: 0, warn, warnMax: warn, life, lifeMax: life, ...rest });
         },
         /** 보스 입(from)에서 dir 쪽 벽까지 닿는 빔 */
         beamToWall(from, dir, opts) {
@@ -160,7 +160,9 @@ function killBoss() {
     sfx('bossDie');
     player.grabbed = 0;
     shake(0.6);
-    burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 60, ['#5b3b8c', '#ffd34d', '#ffffff', '#2e1f47'], 420);
+    burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 60, ['#5b3b8c', '#ffd34d', '#ffffff', '#2e1f47'], 420, { glow: true });
+    ring(boss.x + boss.w / 2, boss.y + boss.h / 2, { r1: 160, life: 0.6, color: '#ffd34d', width: 8 });
+    ring(boss.x + boss.w / 2, boss.y + boss.h / 2, { r1: 100, life: 0.45, color: '#ffffff', width: 4 });
     hazards = hazards.filter(h => h.trigger);   // 보스가 쏜 것들은 사라진다
     boss.wind = 0;
     for (const e of enemies) {

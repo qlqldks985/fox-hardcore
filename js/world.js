@@ -104,8 +104,10 @@ function updatePlayer(dt) {
     if (moveX(p, p.vx * dt)) p.run = 0;
     p.prevBottom = p.y + p.h;
     const hit = moveY(p, p.vy * dt);
+    const fallSpeed = p.vy;
     p.onGround = hit === 'down';
     if (hit) p.vy = 0;
+    if (p.onGround && fallSpeed > 500) dust(p.x + p.w / 2, p.y + p.h - 2, 4, { speed: 60, size: 7 });   // 세게 내려앉으면 먼지
 
     // 움직이는 발판에 내려앉기 (위에서만)
     if (!p.onGround && p.vy >= 0) {
@@ -270,6 +272,18 @@ function updateHazards(dt) {
         h.x += h.vx * dt;
         h.y += h.vy * dt;
         h.spin += dt * 10;
+        // 큰 충격파: 발판 밑을 지나는 동안에는 발판 아래까지만 솟는다 (발판 위에 서 있으면 안전)
+        if (h.tall) { h.h = GROUND_Y - waveTop(h); h.y = GROUND_Y - h.h / 2; }
+        // 바닥을 타고 가는 충격파는 지나가며 먼지와 돌 부스러기를 일으킨다 (그림 효과일 뿐 판정 없음)
+        if ((h.shape === 'wave' || h.shape === 'lava') && Math.random() < dt * (h.tall ? 40 : 18)) {
+            const d = Math.sign(h.vx) || 1, bottom = h.y + h.h / 2;
+            const lava = h.shape === 'lava';
+            dust(h.x - d * 8, bottom - 2, 1, { dir: -d, speed: 90, size: h.tall ? 13 : 8, color: lava ? '#ff9a4a' : '#d9c6a3', life: 0.5 });
+            if (h.tall && Math.random() < 0.5) {
+                particle({ x: h.x, y: bottom - 4, vx: -d * 60 + (Math.random() - 0.5) * 80, vy: -250 - Math.random() * 250,
+                    life: 0.5, size: 3 + Math.random() * 3, color: '#8d7b68', kind: 'chip', grav: 1, spin: 12 });
+            }
+        }
         // 독 방울: 굴러가다 멈추면 독 웅덩이가 되어 3초 동안 남는다
         if (h.toPuddle && h.vx * h.toPuddle <= 0) {
             Object.assign(h, { shape: 'puddle', w: 56, h: 12, y: GROUND_Y - 6, vx: 0, ax: 0, life: 3, toPuddle: 0 });
@@ -278,6 +292,18 @@ function updateHazards(dt) {
         if ((h.shape === 'wave' || h.shape === 'big' || h.shape === 'lava') && isSolid(tileAt(Math.floor(h.x / TILE), Math.floor(h.y / TILE)))) h.dead = true;
     }
     hazards = hazards.filter(h => !h.dead);
+}
+
+/** 큰 충격파의 윗면: 기본은 바닥에서 h.tall 위, 판정 상자가 걸친 칸에 발판이 있으면 그 발판 아랫면 */
+function waveTop(h) {
+    let top = GROUND_Y - h.tall;
+    const c0 = Math.floor((h.x - h.w / 2) / TILE), c1 = Math.floor((h.x + h.w / 2 - 1) / TILE);
+    for (let c = c0; c <= c1; c++) {
+        for (let r = Math.max(0, Math.floor(top / TILE)); r * TILE < GROUND_Y; r++) {
+            if (tileAt(c, r) === '-') top = Math.max(top, r * TILE + 15);   // 발판 두께 15px (drawPlank)
+        }
+    }
+    return top;
 }
 
 function updateBullets(dt) {
@@ -435,20 +461,66 @@ function killPlayer() {
     player.hp = 0;   // 기절하면 하트가 모두 빈 칸으로 보이게
     shake(0.25);
     burst(player.x + player.w / 2, player.y + player.h / 2, 36, ['#e8742a', '#fde7cf', '#ffffff', '#b8401f'], 380);
+    ring(player.x + player.w / 2, player.y + player.h / 2, { r1: 70, life: 0.45, color: '#ffffff', width: 5 });
 }
 
 // ---- 효과
 let shakeTime = 0;
 const shake = t => { shakeTime = Math.max(shakeTime, t); };
 
-function burst(x, y, n, colors, speed) {
+/**
+ * 파티클 종류 (drawParticles 가 그린다)
+ *   dot   : 동그란 조각, 작아지며 사라진다 (glow 면 밝게 겹친다)
+ *   spark : 날아가는 방향으로 늘어난 불티
+ *   chip  : 빙글빙글 도는 돌 부스러기 (무겁게 떨어진다)
+ *   dust  : 부풀면서 옅어지는 먼지 구름
+ *   ring  : 퍼져 나가는 고리 (flat 이면 납작한 바닥 고리)
+ */
+function particle(pt) {
+    particles.push({ vx: 0, vy: 0, grav: 0.6, drag: 0, size: 4, kind: 'dot', spin: 0, rot: Math.random() * 6, ...pt, max: pt.life });
+}
+
+/** 터지는 효과: 동그란 조각 + 불티. 예전 호출(색 목록, 속도)은 그대로 쓴다 */
+function burst(x, y, n, colors, speed, { glow = false } = {}) {
     for (let i = 0; i < n; i++) {
         const a = Math.random() * Math.PI * 2;
         const s = speed * (0.3 + Math.random() * 0.7);
-        particles.push({
+        const spark = i % 4 === 3;
+        particle({
             x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - speed * 0.3,
-            life: 0.6 + Math.random() * 0.6, size: 3 + Math.random() * 4,
-            color: colors[i % colors.length],
+            life: 0.45 + Math.random() * 0.5, size: spark ? 2 : 3 + Math.random() * 4,
+            color: colors[i % colors.length], kind: spark ? 'spark' : 'dot', drag: 1.5, glow: glow || spark,
+        });
+    }
+    if (n >= 10) ring(x, y, { r1: 18 + speed * 0.08, life: 0.3, color: colors[0], width: 3 });
+}
+
+/** 먼지 구름. dir 이 있으면 그 쪽으로 쓸려간다 */
+function dust(x, y, n, { dir = 0, speed = 70, size = 9, color = '#d9c6a3', life = 0.7 } = {}) {
+    for (let i = 0; i < n; i++) {
+        const sx = dir ? dir * speed * (0.4 + Math.random()) : (Math.random() - 0.5) * 2 * speed;
+        particle({
+            x: x + (Math.random() - 0.5) * 10, y, vx: sx, vy: -speed * (0.2 + Math.random() * 0.5),
+            life: life * (0.6 + Math.random() * 0.6), size: size * (0.6 + Math.random() * 0.6),
+            color, kind: 'dust', grav: -0.03, drag: 3,
+        });
+    }
+}
+
+function ring(x, y, { r1 = 40, life = 0.35, color = '#ffffff', width = 4, flat = false } = {}) {
+    particle({ x, y, life, r1, color, width, flat, kind: 'ring', grav: 0 });
+}
+
+/** 무거운 것이 바닥을 내려찍었을 때: 바닥 고리, 양옆으로 쓸리는 먼지, 튀는 돌 부스러기 */
+function impact(x, y, width = 80, { color = '#d9c6a3', chips = ['#8d7b68', '#6e5e4e', '#b8a48a'] } = {}) {
+    ring(x, y, { r1: width * 1.4, life: 0.4, color: '#fff3c4', width: 6, flat: true });
+    ring(x, y, { r1: width * 0.9, life: 0.3, color: '#ffffff', width: 3, flat: true });
+    for (const d of [-1, 1]) dust(x + d * width * 0.4, y - 4, 7, { dir: d, speed: 260, size: 14, color, life: 0.8 });
+    for (let i = 0; i < 12; i++) {
+        particle({
+            x: x + (Math.random() - 0.5) * width, y: y - 4, vx: (Math.random() - 0.5) * 380, vy: -200 - Math.random() * 380,
+            life: 0.6 + Math.random() * 0.5, size: 3 + Math.random() * 4, color: chips[i % chips.length],
+            kind: 'chip', grav: 1, spin: (Math.random() - 0.5) * 20,
         });
     }
 }
@@ -456,9 +528,11 @@ function burst(x, y, n, colors, speed) {
 function updateEffects(dt) {
     shakeTime = Math.max(0, shakeTime - dt);
     for (const pt of particles) {
-        pt.vy += PHYS.gravity * 0.6 * dt;
+        pt.vy += PHYS.gravity * pt.grav * dt;
+        if (pt.drag) { const k = Math.max(0, 1 - pt.drag * dt); pt.vx *= k; if (pt.grav <= 0) pt.vy *= k; }
         pt.x += pt.vx * dt;
         pt.y += pt.vy * dt;
+        pt.rot += pt.spin * dt;
         pt.life -= dt;
     }
     particles = particles.filter(pt => pt.life > 0);

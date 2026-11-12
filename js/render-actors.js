@@ -44,21 +44,100 @@ function drawHazard(h) {
         ctx.stroke();
         ctx.restore();
     } else if (h.shape === 'wave' || h.shape === 'lava') {
-        const tall = h.h / 2;
-        ctx.fillStyle = h.shape === 'lava' ? 'rgba(255,110,40,0.95)' : 'rgba(255,220,120,0.9)';
-        ctx.beginPath();
-        ctx.moveTo(h.x - 14, h.y + tall);
-        ctx.quadraticCurveTo(h.x, h.y - tall * 1.8, h.x + 14, h.y + tall);
-        ctx.closePath();
-        ctx.fill();
-        if (h.shape === 'lava') {
-            ctx.fillStyle = '#ffd24a';
-            ctx.beginPath();
-            ctx.arc(h.x, h.y + 4, 5, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        drawShockwave(h, h.shape === 'lava' ? WAVE_COLORS.lava : WAVE_COLORS.wave);
     } else if (h.shape === 'beam') drawBeam(h);
     else drawProjectile(h);
+}
+
+const WAVE_COLORS = {
+    wave: { core: [255, 250, 225], mid: [255, 205, 95], edge: [255, 150, 40] },
+    lava: { core: [255, 235, 150], mid: [255, 120, 40], edge: [220, 40, 20] },
+};
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+/**
+ * 바닥을 타고 가는 충격파.
+ * 판정 상자(h.w × h.h)는 빈틈없이 채우고, 앞쪽은 볼록하게 부풀고 뒤쪽은 꼬리처럼 흩어진다.
+ * 겹쳐 그리기(lighter)로 빛이 번지는 느낌을 낸다.
+ */
+function drawShockwave(h, col) {
+    const d = Math.sign(h.vx) || 1;
+    const top = h.y - h.h / 2, bot = h.y + h.h / 2, H = h.h;
+    const front = h.x + d * h.w / 2, back = h.x - d * h.w / 2;
+    const t = game.anim;
+    const bulge = Math.max(8, Math.min(22, H * 0.09));
+    const tail = Math.min(90, 24 + H * 0.3);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 1) 뒤로 끌리는 속도선
+    ctx.lineCap = 'round';
+    const lines = Math.max(3, Math.round(H / 26));
+    for (let i = 0; i < lines; i++) {
+        const jitter = Math.sin(i * 12.9898) * 0.35;                  // 줄 간격을 일부러 고르지 않게
+        const yy = top + H * ((i + 0.5 + jitter) / lines) + Math.sin(t * 17 + i * 2.1) * 3;
+        const len = tail * (0.3 + 0.7 * Math.abs(Math.sin(i * 1.7 + t * 9)));
+        const g = ctx.createLinearGradient(back, 0, back - d * len, 0);
+        g.addColorStop(0, rgba(col.mid, 0.55));
+        g.addColorStop(1, rgba(col.mid, 0));
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 2 + (i % 2) * 2;
+        ctx.beginPath(); ctx.moveTo(back, yy); ctx.lineTo(back - d * len, yy); ctx.stroke();
+    }
+
+    // 2) 몸통: 뒤(투명) → 앞(밝음) 으로 진해지는 볼록한 벽
+    const wobble = y => Math.sin(y * 0.09 + t * 28) * 2.5;
+    const body = ctx.createLinearGradient(back - d * tail * 0.6, 0, front + d * bulge, 0);
+    body.addColorStop(0, rgba(col.edge, 0));
+    body.addColorStop(0.45, rgba(col.edge, 0.45));
+    body.addColorStop(0.8, rgba(col.mid, 0.85));
+    body.addColorStop(1, rgba(col.core, 0.95));
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(back - d * tail * 0.6, bot);
+    ctx.lineTo(front, bot);
+    const steps = Math.max(4, Math.round(H / 12));
+    for (let i = 1; i <= steps; i++) {               // 앞면: 가운데가 가장 볼록, 살짝 일렁인다
+        const k = i / steps, y = bot - H * k;
+        ctx.lineTo(front + d * (bulge * Math.sin(Math.PI * k) + wobble(y)), y);
+    }
+    ctx.lineTo(back, top);
+    ctx.quadraticCurveTo(back - d * tail * 0.3, top + H * 0.25, back - d * tail * 0.6, top + H * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3) 안쪽 물결 (앞면을 따라 겹쳐진 곡선)
+    ctx.lineWidth = 2;
+    for (let j = 0; j < 3; j++) {
+        const off = ((t * 140 + j * 9) % 27);         // 앞에서 뒤로 흘러간다
+        ctx.strokeStyle = rgba(col.core, 0.5 - off / 60);
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+            const k = i / steps, y = bot - H * k;
+            const x = front - d * off + d * (bulge * 0.8 * Math.sin(Math.PI * k) + wobble(y + j * 20));
+            i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    // 4) 앞면의 하얀 테두리
+    ctx.strokeStyle = rgba(col.core, 0.95);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+        const k = i / steps, y = bot - H * k;
+        const x = front + d * (bulge * Math.sin(Math.PI * k) + wobble(y));
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+
+    // 5) 바닥이 쓸리며 빛나는 자국
+    const glow = ctx.createRadialGradient(h.x, bot, 2, h.x, bot, 40 + bulge);
+    glow.addColorStop(0, rgba(col.core, 0.7));
+    glow.addColorStop(1, rgba(col.edge, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.ellipse(h.x, bot, 40 + bulge, 9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
 }
 
 /** 가로 빔: 예고 중에는 깜빡이는 가는 선, 그 뒤에는 굵은 빛 */
@@ -82,21 +161,60 @@ function drawBeam(h) {
         ctx.globalAlpha = 1;
         return;
     }
-    ctx.fillStyle = colors[1];
-    ctx.globalAlpha = 0.55;
-    ctx.fillRect(x0, h.y - h.h / 2 - 4, h.w, h.h + 8);
+    // 켜지는 순간 굵게 번쩍였다가 판정 두께로 가라앉는다
+    const age = h.lifeMax ? 1 - h.life / h.lifeMax : 1;
+    const pop = Math.max(0, 1 - age * 5);
+    const flick = 0.85 + 0.15 * Math.sin(game.anim * 60);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // 바깥 번짐 (판정보다 넓다: 보이는 것보다 판정이 작게)
+    const half = h.h / 2 + 8 + pop * 14;
+    const glow = ctx.createLinearGradient(0, h.y - half, 0, h.y + half);
+    glow.addColorStop(0, 'rgba(0,0,0,0)');
+    glow.addColorStop(0.5, colors[1]);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.7 * flick;
+    ctx.fillStyle = glow;
+    ctx.fillRect(x0, h.y - half, h.w, half * 2);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = colors[0];
     if (h.kind === 'lightning') {
-        ctx.beginPath();
-        ctx.moveTo(x0, h.y);
-        for (let x = x0; x <= x0 + h.w; x += 24) ctx.lineTo(x, h.y + (Math.random() - 0.5) * h.h);
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = colors[0];
-        ctx.stroke();
+        for (const [wdt, c, amp] of [[7, colors[1], 1], [3, '#ffffff', 0.6]]) {
+            ctx.strokeStyle = c;
+            ctx.lineWidth = wdt;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x0, h.y);
+            for (let x = x0 + 20; x <= x0 + h.w; x += 20) ctx.lineTo(x, h.y + (Math.random() - 0.5) * h.h * amp);
+            ctx.stroke();
+        }
     } else {
-        ctx.fillRect(x0, h.y - h.h / 4, h.w, h.h / 2);
+        // 판정 두께의 본체 + 하얀 심
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(x0, h.y - h.h / 2, h.w, h.h);
+        ctx.fillStyle = colors[0];
+        const core = h.h * (0.25 + 0.1 * Math.sin(game.anim * 40));
+        ctx.fillRect(x0, h.y - core, h.w, core * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillRect(x0, h.y - core * 0.35, h.w, core * 0.7);
+        // 윗가장자리에서 크기가 제각각인 불꽃 혀가 날름거린다
+        if (h.kind === 'fire' || h.kind === 'lava') {
+            const topY = h.y - h.h / 2;
+            for (let x = x0 + 4; x < x0 + h.w - 4; x += 11) {
+                const n = Math.sin(x * 0.17 + game.anim * 19) + Math.sin(x * 0.071 - game.anim * 11);
+                const tall = 6 + (n + 2) * 5;
+                const lean = Math.sin(x * 0.05 + game.anim * 7) * 4;
+                ctx.fillStyle = n > 0.6 ? colors[0] : colors[1];
+                ctx.globalAlpha = 0.65 + 0.35 * ((n + 2) / 4);
+                ctx.beginPath();
+                ctx.moveTo(x - 6, topY + 3);
+                ctx.quadraticCurveTo(x - 4 + lean, topY - tall * 0.5, x + lean * 1.5, topY - tall);
+                ctx.quadraticCurveTo(x + 4 + lean, topY - tall * 0.4, x + 6, topY + 3);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
     }
+    ctx.restore();
 }
 
 /** 보스가 쏘는 여러 가지 투사체 */
@@ -420,11 +538,44 @@ function drawFox(p) {
 
 function drawParticles() {
     for (const pt of particles) {
-        ctx.globalAlpha = Math.min(1, pt.life * 2);
-        ctx.fillStyle = pt.color;
-        ctx.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
+        const k = Math.max(0, pt.life / pt.max);      // 1 → 0 으로 줄어든다
+        ctx.save();
+        if (pt.glow || pt.kind === 'ring') ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = ctx.strokeStyle = pt.color;
+        switch (pt.kind) {
+            case 'spark':
+                ctx.globalAlpha = Math.min(1, k * 1.5);
+                ctx.lineWidth = pt.size;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(pt.x, pt.y);
+                ctx.lineTo(pt.x - pt.vx * 0.035, pt.y - pt.vy * 0.035);
+                ctx.stroke();
+                break;
+            case 'chip':
+                ctx.globalAlpha = Math.min(1, k * 3);
+                ctx.translate(pt.x, pt.y);
+                ctx.rotate(pt.rot);
+                ctx.fillRect(-pt.size / 2, -pt.size / 2, pt.size, pt.size * 0.7);
+                break;
+            case 'dust':
+                ctx.globalAlpha = 0.55 * k;
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size * (1.6 - k * 0.8), 0, Math.PI * 2); ctx.fill();
+                break;
+            case 'ring': {
+                const e = 1 - k * k;                    // 처음에 빠르게 퍼진다
+                const r = 4 + (pt.r1 - 4) * e;
+                ctx.globalAlpha = k;
+                ctx.lineWidth = Math.max(0.5, pt.width * k);
+                ctx.beginPath(); ctx.ellipse(pt.x, pt.y, r, pt.flat ? r * 0.22 : r, 0, 0, Math.PI * 2); ctx.stroke();
+                break;
+            }
+            default:
+                ctx.globalAlpha = Math.min(1, k * 2);
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, Math.max(0.5, pt.size / 2 * (0.4 + 0.6 * k)), 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
     }
-    ctx.globalAlpha = 1;
 }
 
 function drawPopups() {
